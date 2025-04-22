@@ -1,0 +1,31 @@
+# Ignore virtual environment for Python
+venv/
+__pycache__/
+
+# Ignore Python bytecode files
+*.pyc
+*.pyo
+
+# Ignore Expo (React Native) build files
+.expo/
+.expo-shared/
+node_modules/
+npm-debug.log
+
+# Ignore Express build files (if any)
+node_modules/
+npm-debug.log
+yarn-error.log
+dist/
+build/
+
+# Ignore environment variable files
+.env
+.env.local
+
+# Ignore log files
+*.log
+
+# Ignore other OS-specific files
+.DS_Store  # macOS
+Thumbs.db  # Windows
