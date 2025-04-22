@@ -1,17 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, Alert, ScrollView, TextInput } from 'react-native';
+import {
+  View, Text, Image, StyleSheet, TouchableOpacity, Alert,
+  ScrollView, TextInput, Dimensions, ActivityIndicator
+} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 
+const { width } = Dimensions.get('window');
+const IMAGE_PREVIEW_SIZE = width * 0.6;
+
 export default function FaceRecognitionScreen() {
   const [image, setImage] = useState(null);
+  const [base64Image, setBase64Image] = useState(null);
   const [faces, setFaces] = useState([]);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [persons, setPersons] = useState([]);
   const [showRegister, setShowRegister] = useState(false);
 
-  // Load registered persons on startup
   useEffect(() => {
     fetchPersons();
   }, []);
@@ -22,29 +28,37 @@ export default function FaceRecognitionScreen() {
       setPersons(response.data);
     } catch (error) {
       console.error('Error fetching persons:', error);
+      Alert.alert("Internal server error");
     }
   };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission required', 'We need access to your photos to select an image');
+      Alert.alert('Permission required', 'Need photo access to select image');
       return;
     }
 
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.8,
+      quality: 0.7,
       base64: true,
     });
 
     if (!result.canceled && result.assets[0].base64) {
-      processImage(result.assets[0].base64);
+      setBase64Image(result.assets[0].base64);
+      setImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      setFaces([]);
     }
   };
 
-  const processImage = async (base64Image) => {
+  const processImage = async () => {
+    if (!base64Image) {
+      Alert.alert("No image selected");
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await axios.post('http://localhost:5001/recognize_faces', {
@@ -56,12 +70,22 @@ export default function FaceRecognitionScreen() {
         return;
       }
 
-      setImage(`data:image/jpeg;base64,${base64Image}`);
-      setFaces(response.data.faces);
+      const scaleX = IMAGE_PREVIEW_SIZE / response.data.image_width;
+      const scaleY = IMAGE_PREVIEW_SIZE / response.data.image_height;
+
+      const scaledFaces = response.data.faces.map(face => ({
+        ...face,
+        scaledX: face.x * scaleX,
+        scaledY: face.y * scaleY,
+        scaledWidth: face.width * scaleX,
+        scaledHeight: face.height * scaleY,
+      }));
+
+      setFaces(scaledFaces);
 
     } catch (error) {
       console.error('Recognition error:', error);
-      Alert.alert('Error', 'Failed to process image');
+      Alert.alert('Error', 'Failed to process image.');
     } finally {
       setLoading(false);
     }
@@ -69,7 +93,7 @@ export default function FaceRecognitionScreen() {
 
   const registerFace = async () => {
     if (!name || !image) {
-      Alert.alert('Error', 'Please enter a name and select an image');
+      Alert.alert('Error', 'Name and image are required');
       return;
     }
 
@@ -77,15 +101,14 @@ export default function FaceRecognitionScreen() {
     try {
       await axios.post('http://localhost:5001/register_face', {
         name,
-        image: image
+        image
       });
-      Alert.alert('Success', 'Face registered successfully');
+      Alert.alert('Success', `${name} registered successfully`);
       setName('');
       setShowRegister(false);
       fetchPersons();
     } catch (error) {
-      console.error('Registration error:', error);
-      Alert.alert('Error', 'Failed to register face');
+      Alert.alert('Error', 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -93,80 +116,94 @@ export default function FaceRecognitionScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <TouchableOpacity style={styles.button} onPress={pickImage}>
-        <Text style={styles.buttonText}>Select Group Photo</Text>
-      </TouchableOpacity>
+      <Text style={styles.title}>🤖 Face Recognition</Text>
 
-      <TouchableOpacity
-        style={[styles.button, { backgroundColor: '#4CAF50' }]}
-        onPress={() => setShowRegister(!showRegister)}
-      >
-        <Text style={styles.buttonText}>
-          {showRegister ? 'Cancel Registration' : 'Register New Person'}
-        </Text>
-      </TouchableOpacity>
+      <View style={styles.buttonRow}>
+        <TouchableOpacity style={[styles.button, styles.primary]} onPress={pickImage}>
+          <Text style={styles.buttonText}>📷 Select Image</Text>
+        </TouchableOpacity>
 
-      {showRegister && (
-        <View style={styles.registerForm}>
-          <Text style={styles.label}>Enter Name:</Text>
-          <TextInput
-            style={styles.input}
-            value={name}
-            onChangeText={setName}
-            placeholder="Person's name"
-          />
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: '#FF9800' }]}
-            onPress={registerFace}
-            disabled={loading}
-          >
-            <Text style={styles.buttonText}>Register Face</Text>
+        {image && (
+          <TouchableOpacity style={[styles.button, styles.secondary]} onPress={processImage}>
+            <Text style={styles.buttonText}>🧠 Recognize Faces</Text>
           </TouchableOpacity>
-        </View>
-      )}
-
-      {loading && <Text style={styles.loadingText}>Processing...</Text>}
+        )}
+      </View>
 
       {image && (
-        <View style={styles.imageContainer}>
+        <View style={styles.imageWrapper}>
           <Image
             source={{ uri: image }}
             style={styles.image}
-            resizeMode="contain"
+            resizeMode="cover"
           />
-
-          {faces.map((face, index) => (
+          {faces.map((face, idx) => (
             <View
-              key={index}
+              key={idx}
               style={[
                 styles.faceBox,
                 {
-                  left: face.x,
-                  top: face.y,
-                  width: face.width,
-                  height: face.height,
+                  left: face.scaledX,
+                  top: face.scaledY,
+                  width: face.scaledWidth,
+                  height: face.scaledHeight
                 }
               ]}
             >
-              <Text style={styles.faceLabel}>
-                {face.name} ({Math.round(face.confidence * 100)}%)
-              </Text>
+              <Text style={styles.faceLabel}>{face.name} ({Math.round(face.confidence)}%)</Text>
             </View>
           ))}
         </View>
       )}
 
-      <View style={styles.personsList}>
-        <Text style={styles.sectionTitle}>Registered Persons:</Text>
-        {persons.length === 0 ? (
-          <Text>No persons registered yet</Text>
+      {loading && <ActivityIndicator size="large" color="#3f51b5" style={{ margin: 16 }} />}
+
+      {showRegister && (
+        <View style={styles.registerForm}>
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder="Enter name"
+            placeholderTextColor="#999"
+          />
+          <TouchableOpacity
+            style={[styles.button, styles.registerButton]}
+            onPress={registerFace}
+            disabled={loading || !name || !image}
+          >
+            <Text style={styles.buttonText}>💾 Save Face</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <TouchableOpacity
+        style={[styles.button, showRegister ? styles.cancelButton : styles.registerToggle]}
+        onPress={() => setShowRegister(!showRegister)}
+      >
+        <Text style={styles.buttonText}>
+          {showRegister ? '✖ Cancel' : '➕ Register Face'}
+        </Text>
+      </TouchableOpacity>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>📝 Recognition Results</Text>
+        {faces.length === 0 ? (
+          <Text style={styles.noResult}>No faces detected yet</Text>
         ) : (
-          persons.map(person => (
-            <Text key={person.id} style={styles.personItem}>
-              {person.name}
+          faces.map((face, idx) => (
+            <Text key={idx} style={styles.resultText}>
+              {face.name} - {Math.round(face.confidence)}%
             </Text>
           ))
         )}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>📇 Registered Persons ({persons.length})</Text>
+        {persons.map(p => (
+          <Text key={p.id} style={styles.resultText}>{p.name}</Text>
+        ))}
       </View>
     </ScrollView>
   );
@@ -174,77 +211,108 @@ export default function FaceRecognitionScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
+    padding: 16,
     alignItems: 'center',
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 20,
+    color: '#3f51b5',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    marginBottom: 12,
+    gap: 12,
   },
   button: {
-    backgroundColor: '#2196F3',
-    padding: 15,
-    borderRadius: 5,
-    marginBottom: 15,
-    width: '100%',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
     alignItems: 'center',
   },
+  primary: {
+    backgroundColor: '#3f51b5',
+  },
+  secondary: {
+    backgroundColor: '#009688',
+  },
+  registerToggle: {
+    backgroundColor: '#607d8b',
+    marginTop: 12,
+  },
+  registerButton: {
+    backgroundColor: '#4caf50',
+    marginTop: 12,
+  },
+  cancelButton: {
+    backgroundColor: '#f44336',
+    marginTop: 12,
+  },
   buttonText: {
-    color: 'white',
-    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
   },
-  registerForm: {
-    width: '100%',
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 16,
-    marginBottom: 5,
-  },
-  input: {
+  imageWrapper: {
+    width: IMAGE_PREVIEW_SIZE,
+    height: IMAGE_PREVIEW_SIZE,
+    marginVertical: 16,
+    position: 'relative',
+    borderRadius: 10,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#ccc',
-    borderRadius: 5,
-    padding: 10,
-    marginBottom: 15,
-    width: '100%',
-  },
-  loadingText: {
-    fontSize: 16,
-    marginVertical: 10,
-  },
-  imageContainer: {
-    position: 'relative',
-    width: '100%',
-    aspectRatio: 1,
-    marginBottom: 20,
   },
   image: {
     width: '100%',
     height: '100%',
-    borderRadius: 10,
   },
   faceBox: {
     position: 'absolute',
     borderWidth: 2,
-    borderColor: '#FF0000',
+    borderColor: '#ff4081',
   },
   faceLabel: {
     position: 'absolute',
-    bottom: -25,
+    bottom: -18,
     left: 0,
-    backgroundColor: '#FF0000',
+    backgroundColor: '#ff4081',
     color: 'white',
-    padding: 2,
-    fontSize: 12,
+    paddingHorizontal: 4,
+    fontSize: 11,
+    borderRadius: 4,
   },
-  personsList: {
+  registerForm: {
+    width: '100%',
+    padding: 16,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 10,
+    marginVertical: 12,
+  },
+  input: {
+    backgroundColor: 'white',
+    padding: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    marginBottom: 10,
+  },
+  section: {
     width: '100%',
     marginTop: 20,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  personItem: {
     fontSize: 16,
-    paddingVertical: 5,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#333',
+  },
+  noResult: {
+    fontStyle: 'italic',
+    color: '#777',
+  },
+  resultText: {
+    paddingVertical: 4,
+    fontSize: 15,
   },
 });
