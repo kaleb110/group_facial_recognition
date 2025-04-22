@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 
 const { width } = Dimensions.get('window');
-const IMAGE_PREVIEW_SIZE = width * 0.6;
+const IMAGE_PREVIEW_SIZE = width * 0.3;
 
 export default function FaceRecognitionScreen() {
   const [image, setImage] = useState(null);
