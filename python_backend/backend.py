@@ -172,5 +172,33 @@ def get_persons():
         persons = [dict(row) for row in cursor]
         return jsonify(persons)
 
+@app.route('/update_person/<int:id>', methods=['PUT'])
+def update_person(id):
+    data = request.json
+    new_name = data.get('name')
+
+    if not new_name:
+        return jsonify({'error': 'Name is required'}), 400
+
+    conn = get_db()
+    conn.execute('UPDATE persons SET name = ? WHERE id = ?', (new_name, id))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+@app.route('/delete_person/<int:id>', methods=['DELETE'])
+def delete_person(id):
+    conn = get_db()
+    row = conn.execute('SELECT embedding FROM persons WHERE id = ?', (id,)).fetchone()
+    if row:
+        try:
+            os.remove(row['embedding'])
+        except Exception as e:
+            print("Failed to remove image:", e)
+        conn.execute('DELETE FROM persons WHERE id = ?', (id,))
+        conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)

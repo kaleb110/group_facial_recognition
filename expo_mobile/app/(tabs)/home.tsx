@@ -201,9 +201,72 @@ export default function FaceRecognitionScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>📇 Registered Persons ({persons.length})</Text>
-        {persons.map(p => (
-          <Text key={p.id} style={styles.resultText}>{p.name}</Text>
+        {persons.map((p, index) => (
+          <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+            <TextInput
+              value={p.editingName ?? p.name}
+              onChangeText={(text) => {
+                const updated = [...persons];
+                updated[index].editingName = text;
+                setPersons(updated);
+              }}
+              editable={p.isEditing}
+              style={{
+                flex: 1,
+                borderBottomWidth: 1,
+                borderColor: '#ccc',
+                marginRight: 8,
+                padding: 4,
+              }}
+            />
+            {p.isEditing ? (
+              <TouchableOpacity
+                onPress={async () => {
+                  try {
+                    await axios.put(`http://localhost:5001/update_person/${p.id}`, {
+                      name: p.editingName,
+                    });
+                    const updated = [...persons];
+                    updated[index].name = p.editingName;
+                    updated[index].isEditing = false;
+                    setPersons(updated);
+                  } catch {
+                    Alert.alert('Update failed');
+                  }
+                }}
+                style={[styles.button, { backgroundColor: '#4caf50' }]}
+              >
+                <Text style={styles.buttonText}>💾</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  const updated = [...persons];
+                  updated[index].isEditing = true;
+                  updated[index].editingName = p.name;
+                  setPersons(updated);
+                }}
+                style={[styles.button, { backgroundColor: '#ff9800' }]}
+              >
+                <Text style={styles.buttonText}>✏️</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await axios.delete(`http://localhost:5001/delete_person/${p.id}`);
+                  fetchPersons();
+                } catch {
+                  Alert.alert('Delete failed');
+                }
+              }}
+              style={[styles.button, { backgroundColor: '#f44336', marginLeft: 6 }]}
+            >
+              <Text style={styles.buttonText}>🗑</Text>
+            </TouchableOpacity>
+          </View>
         ))}
+
       </View>
     </ScrollView>
   );
